@@ -7,25 +7,14 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Tuple, Any
 from dataclasses import dataclass
+from intermediaries.dataclass import BaseData
 
 
 class DataIOInterface(ABC):
     """Interface for data I/O operations."""
-    
     @abstractmethod
-    def read_users(self) -> np.ndarray:
-        """Read users data and return as numpy array."""
-        raise NotImplementedError("This method should be overridden by subclasses.")
-
-    
-    @abstractmethod
-    def read_products(self) -> np.ndarray:
-        """Read products data and return as numpy array."""
-        raise NotImplementedError("This method should be overridden by subclasses.")
-    
-    @abstractmethod
-    def read_ratings(self) -> np.ndarray:
-        """Read ratings data and return as numpy array."""
+    def read_all(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Read all data (users, products, ratings) and return as a tuple of numpy arrays."""
         raise NotImplementedError("This method should be overridden by subclasses.")
     
     @abstractmethod
@@ -64,6 +53,13 @@ class DataIO(DataIOInterface):
             data = file.read().strip().split('\n')
             splitted = [line.split('\t') for line in data]
             return np.array(splitted)
+
+    def read_all(self) -> BaseData:
+        """Read all data (users, products, ratings) and return as a BaseData instance."""
+        users = self.read_users()
+        products = self.read_products()
+        ratings = self.read_ratings()
+        return BaseData(rating=ratings, user=users, product=products)
     
     def save_model(self, model_data: np.ndarray) -> None:
         """Save model data to file."""
