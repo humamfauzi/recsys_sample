@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import numpy as np
-from typing import List
+from typing import List, Dict
 
 @dataclass
 class BaseData:
@@ -26,3 +26,22 @@ class ProcessedTrainingData:
     training_data: np.ndarray
     test_data: np.ndarray
     fold_indices: List[Folds]
+    idx_map: Dict[int, str]
+    user_metadata_range: range
+    product_metadata_range: range
+
+
+@dataclass
+class ALSHyperParameters:
+    """Hyperparameters for ALS model."""
+    n_iter: List[int]
+    latent_factors: List[int]
+    regularization: List[float]
+    
+    def to_dict(self) -> Dict:
+        """Convert ALSHyperParameters to dictionary."""
+        return {
+            'n_iter': self.n_iter,
+            'latent_factors': self.latent_factors,
+            'regularization': self.regularization
+        }

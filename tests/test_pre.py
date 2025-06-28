@@ -24,10 +24,10 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
         
         # Create sample product data: [product_id, name, release_date, imdb_url, unknown, Action, Adventure, Animation]
         self.sample_product = np.array([
-            [1, "Movie1", "01-01-1995", "http://imdb.com/1", 0, 1, 0, 0],
-            [2, "Movie2", "15-05-2000", "http://imdb.com/2", 0, 0, 1, 0],
-            [3, "Movie3", "25-12-2009", "http://imdb.com/3", 0, 0, 0, 1],
-            [4, "Movie4", "10-06-2019", "http://imdb.com/4", 0, 1, 1, 0]
+            [1, "Movie1", "01-01-1995", "http://imdb.com/1", "", 0, 1, 0, 0],
+            [2, "Movie2", "15-05-2000", "http://imdb.com/2", "", 0, 0, 1, 0],
+            [3, "Movie3", "25-12-2009", "http://imdb.com/3", "", 0, 0, 0, 1],
+            [4, "Movie4", "10-06-2019", "http://imdb.com/4", "", 0, 1, 1, 0]
         ])
         
         # Create sample ratings data: [user_id, product_id, rating, timestamp]
@@ -58,7 +58,7 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
     
     def test_encode_profession(self):
         """Test profession encoding method."""
-        result = self.preprocessor.encode_profession()
+        result = self.preprocessor.encode_profession(self.sample_user)
         
         # Check shape - should be (num_users, num_unique_professions)
         unique_professions = np.unique(self.sample_user[:, 2])
@@ -83,7 +83,7 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
     
     def test_encode_gender(self):
         """Test gender encoding method."""
-        result = self.preprocessor.encode_gender()
+        result = self.preprocessor.encode_gender(self.sample_user)
         
         # Check shape - should be (num_users,)
         expected_shape = (len(self.sample_user),)
@@ -106,7 +106,7 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
     
     def test_encode_age(self):
         """Test age encoding method."""
-        result = self.preprocessor.encode_age()
+        result = self.preprocessor.encode_age(self.sample_user)
         
         # Check shape
         expected_shape = (len(self.sample_user),)
@@ -130,7 +130,7 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
     
     def test_encode_user_data(self):
         """Test user data encoding method."""
-        result = self.preprocessor.encode_user_data()
+        result = self.preprocessor.encode_user_data(self.sample_user)
         
         # Check shape - should include user_id + age + gender + profession_encoding
         unique_professions = np.unique(self.sample_user[:, 2])
@@ -166,9 +166,9 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
     def test_drop_imdb(self):
         """Test drop_imdb method."""
         test_array = np.array([
-            [1, "col1", "imdb_url", "col3"],
-            [2, "col1", "imdb_url", "col3"],
-            [3, "col1", "imdb_url", "col3"]
+            [1, "col1", "col2", "imdb_url", "col3"],
+            [2, "col1", "col2", "imdb_url", "col3"],
+            [3, "col1", "col2", "imdb_url", "col3"]
         ])
         
         result = self.preprocessor.drop_imdb(test_array)
@@ -180,12 +180,13 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
         # Check that columns are correctly preserved
         np.testing.assert_array_equal(result[:, 0], test_array[:, 0])
         np.testing.assert_array_equal(result[:, 1], test_array[:, 1])
-        np.testing.assert_array_equal(result[:, 2], test_array[:, 3])
+        np.testing.assert_array_equal(result[:, 2], test_array[:, 2])
+        np.testing.assert_array_equal(result[:, 3], test_array[:, 4])
     
     def test_encode_release_year(self):
         """Test release year encoding method."""
-        result = self.preprocessor.encode_release_year()
-        
+        result = self.preprocessor.encode_release_year(self.sample_product)
+
         # Check shape
         expected_shape = (len(self.sample_product),)
         self.assertEqual(result.shape, expected_shape)
@@ -206,11 +207,11 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
     
     def test_encode_product_data(self):
         """Test product data encoding method."""
-        result = self.preprocessor.encode_product_data()
+        result = self.preprocessor.encode_product_data(self.sample_product)
         
         # Check that result has correct structure
         # Should include: product_id + release_year + genre_columns
-        expected_cols = 1 + 1 + (self.sample_product.shape[1] - 5)  # id + year + genres
+        expected_cols = 1 + 1 + 4  # id + year + genres
         expected_shape = (len(self.sample_product), expected_cols)
         self.assertEqual(result.shape, expected_shape)
         
@@ -223,8 +224,8 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
     
     def test_merge_arrays(self):
         """Test merge_arrays method."""
-        result = self.preprocessor.merge_arrays(self.base_data)
-        
+        result, user_range, product_range = self.preprocessor.merge_arrays(self.base_data)
+
         # Check that result has correct number of rows (same as ratings)
         self.assertEqual(result.shape[0], len(self.sample_ratings))
         
@@ -299,10 +300,10 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
         self.assertEqual(len(result.fold_indices), n_folds)
         
         # Check data shapes are reasonable
-        self.assertGreater(result.training_data.shape[0], 0)
-        self.assertGreater(result.test_data.shape[0], 0)
-        self.assertGreater(result.training_data.shape[1], 0)
-        self.assertGreater(result.test_data.shape[1], 0)
+        self.assertEqual(result.training_data.shape[0], 5)
+        self.assertEqual(result.test_data.shape[0], 2)
+        self.assertEqual(result.training_data.shape[1], result.product_metadata_range.stop)
+        self.assertEqual(result.test_data.shape[1], result.product_metadata_range.stop)
         
         # Check that train and test data have same number of columns
         self.assertEqual(result.training_data.shape[1], result.test_data.shape[1])
