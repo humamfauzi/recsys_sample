@@ -5,7 +5,6 @@ Training module containing ALS implementation and training pipeline.
 import numpy as np
 from dataclasses import dataclass
 from typing import Dict, Any, Tuple
-from .pre import PreprocessedData
 
 
 @dataclass
@@ -48,12 +47,12 @@ class Trainer:
         self.possible_latent_factors = [10, 20, 50, 100]
         self.possible_regularization = [0.01, 0.1, 1.0, 10.0]
     
-    def find_best_parameters(self, preprocessed_data: PreprocessedData) -> TrainingResult:
+    def find_best_parameters(self, preprocessed_data) -> TrainingResult:
         """Find best parameters using cross-validation."""
         # Implementation will go here
         pass
     
-    def train_model(self, preprocessed_data: PreprocessedData) -> TrainingResult:
+    def train_model(self, preprocessed_data) -> TrainingResult:
         """Train the model with the given preprocessed data."""
         # Implementation will go here
         pass

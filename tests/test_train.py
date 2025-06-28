@@ -5,7 +5,6 @@ Test cases for train/train.py module.
 import unittest
 import numpy as np
 from train.train import ALSModel, Trainer, TrainingResult
-from train.pre import PreprocessedData
 
 
 class TestALSModel(unittest.TestCase):
