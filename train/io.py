@@ -15,47 +15,57 @@ class DataIOInterface(ABC):
     @abstractmethod
     def read_users(self) -> np.ndarray:
         """Read users data and return as numpy array."""
-        pass
+        raise NotImplementedError("This method should be overridden by subclasses.")
+
     
     @abstractmethod
     def read_products(self) -> np.ndarray:
         """Read products data and return as numpy array."""
-        pass
+        raise NotImplementedError("This method should be overridden by subclasses.")
     
     @abstractmethod
     def read_ratings(self) -> np.ndarray:
         """Read ratings data and return as numpy array."""
-        pass
+        raise NotImplementedError("This method should be overridden by subclasses.")
     
     @abstractmethod
     def save_model(self, model_data: Any) -> None:
         """Save model data to file."""
-        pass
+        raise NotImplementedError("This method should be overridden by subclasses.")
 
 
 class DataIO(DataIOInterface):
     """Implementation of data I/O operations."""
     
-    def __init__(self, data_path: str):
+    def __init__(self, data_path: str = "dataset"):
         """Initialize with data path."""
         self.data_path = data_path
     
     def read_users(self) -> np.ndarray:
         """Read users data and return as numpy array."""
-        # Implementation will go here
-        pass
+        user_file_path = self.data_path + "/user"
+        with open(user_file_path, 'r') as file:
+            data = file.read().strip().split('\n')
+            splitted = [line.split('|') for line in data]
+            return np.array(splitted)
     
     def read_products(self) -> np.ndarray:
         """Read products data and return as numpy array."""
-        # Implementation will go here
-        pass
+        product_file_path = self.data_path + "/product"
+        with open(product_file_path, 'r') as file:
+            data = file.read().strip().split('\n')
+            splitted = [line.split('|') for line in data]
+            return np.array(splitted)
     
     def read_ratings(self) -> np.ndarray:
         """Read ratings data and return as numpy array."""
-        # Implementation will go here
-        pass
+        ratings_file_path = self.data_path + "/rating"
+        with open(ratings_file_path, 'r') as file:
+            data = file.read().strip().split('\n')
+            splitted = [line.split('\t') for line in data]
+            return np.array(splitted)
     
-    def save_model(self, model_data: Any) -> None:
+    def save_model(self, model_data: np.ndarray) -> None:
         """Save model data to file."""
-        # Implementation will go here
-        pass
+        np.save(self.data_path + "/model.npy", model_data)
+        return
