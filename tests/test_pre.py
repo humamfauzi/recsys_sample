@@ -271,12 +271,12 @@ class TestDataPreprocessorMovieLens(unittest.TestCase):
         # Check that each fold has correct structure
         for fold in result:
             self.assertIsInstance(fold, Folds)
-            self.assertIsInstance(fold.TestIndex, RangeIndex)
-            self.assertIsInstance(fold.TrainIndex, list)
+            self.assertIsInstance(fold.test_index, RangeIndex)
+            self.assertIsInstance(fold.train_index, list)
             
             # Check that train indices don't include test index
-            self.assertNotIn(fold.TestIndex, fold.TrainIndex)
-        
+            self.assertNotIn(fold.test_index, fold.train_index)
+
         # Check first and last fold
         self.assertIsInstance(result[0], Folds)
         self.assertIsInstance(result[-1], Folds)

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Any
+from numpy.typing import NDArray
 
 @dataclass
 class BaseData:
@@ -17,8 +18,8 @@ class RangeIndex:
 
 @dataclass
 class Folds:
-    TrainIndex: List[RangeIndex]
-    TestIndex: RangeIndex
+    train_index: List[RangeIndex]
+    test_index: RangeIndex
 
 @dataclass
 class ProcessedTrainingData:
@@ -26,7 +27,6 @@ class ProcessedTrainingData:
     training_data: np.ndarray
     test_data: np.ndarray
     fold_indices: List[Folds]
-    idx_map: Dict[int, str]
     user_metadata_range: range
     product_metadata_range: range
 
@@ -45,3 +45,16 @@ class ALSHyperParameters:
             'latent_factors': self.latent_factors,
             'regularization': self.regularization
         }
+
+@dataclass
+class TrainingResult:
+    """Data class containing training results."""
+    parameters: Dict[str, Any]
+    user_weights: NDArray[np.float64]
+    item_weights: NDArray[np.float64]
+    user_bias: NDArray[np.float64]
+    item_bias: NDArray[np.float64]
+    user_index_map: Dict[int, int]
+    product_index_map: Dict[int, int]
+    global_mean: float
+    final_loss: float

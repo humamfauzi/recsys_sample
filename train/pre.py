@@ -143,7 +143,7 @@ class DataPreprocessorMovieLens(DataProcessorInterface):
         folds_collection = []
         for ri in range_index_collection:
             train_indices = [other_ri for other_ri in range_index_collection if other_ri != ri]
-            folds = Folds(TestIndex=ri, TrainIndex=train_indices)
+            folds = Folds(test_index=ri, train_index=train_indices)
             folds_collection.append(folds)
         return folds_collection
 

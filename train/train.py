@@ -3,24 +3,11 @@ Training module containing ALS implementation and training pipeline.
 """
 
 import numpy as np
-from numpy.typing import NDArray, Shape
+from numpy.typing import NDArray
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple
-from intermediaries.dataclass import ProcessedTrainingData, ALSHyperParameters
-
-
-@dataclass
-class TrainingResult:
-    """Data class containing training results."""
-    parameters: Dict[str, Any]
-    user_weights: NDArray[np.float64]
-    item_weights: NDArray[np.float64]
-    user_bias: NDArray[np.float64]
-    item_bias: NDArray[np.float64]
-    user_index_map: Dict[int, int]
-    product_index_map: Dict[int, int]
-    global_mean: float
-
+from typing import Dict, Any, Tuple, List
+import itertools
+from intermediaries.dataclass import ProcessedTrainingData, ALSHyperParameters, TrainingResult, RangeIndex, Folds
 
 class ALSModel:
     """Alternating Least Squares model implementation."""
@@ -59,8 +46,9 @@ class ALSModel:
         user, item = row[0], row[1]
         user_metadata = np.dot(row[user_metadata_range], user_metadata_weights)
         item_metadata = np.dot(row[prod_metadata_range], prod_metadata_weights)
-        user_latent = user_latent_weights[user] + user_metadata
-        item_latent = prod_latent_weights[item] + item_metadata
+        print("user", user)
+        user_latent = user_latent_weights[int(user)] + user_metadata
+        item_latent = prod_latent_weights[int(item)] + item_metadata
         latent = np.dot(user_latent, item_latent)
         return latent
 
@@ -72,19 +60,19 @@ class ALSModel:
         user_index_map = {user: idx for idx, user in enumerate(unique_users)}
         product_index_map = {product: idx for idx, product in enumerate(unique_products)}
         return user_index_map, product_index_map, len(unique_users), len(unique_products)
-    
-    def fit(self, ptd: ProcessedTrainingData) -> TrainingResult:
+
+    def fit(self, training_data: NDArray, user_metadata_range: range, product_metadata_range: range) -> TrainingResult:
         """Train the ALS model on training data."""
-        self.user_idx_map, self.product_index_map, n_users, n_items = self.find_unique_indices(ptd.training_data)
+        self.user_idx_map, self.product_index_map, n_users, n_items = self.find_unique_indices(training_data)
         # TODO: use enum to determine the column indices
-        global_mean = np.mean(ptd.training_data[:, 2])  # Assuming ratings are in the third column
+        global_mean = np.mean(training_data[:, 2])  # Assuming ratings are in the third column
         user_latent_weights, prod_latent_weights, user_bias, item_bias = self.initialize_weights_and_bias(n_users, n_items)
-        user_metadata_weights, prod_metadata_weights = self.initialize_metadata_weights(ptd.user_metadata_range, ptd.product_metadata_range)
+        user_metadata_weights, prod_metadata_weights = self.initialize_metadata_weights(user_metadata_range, product_metadata_range)
         self.loss_iter_pair = []
 
         for iteration in range(self.n_iter):
             grad_user_metadata, grad_prod_metadata = 0, 0
-            for row in ptd.training_data:
+            for row in training_data:
                 # TODO: use enum to determine the column indices
                 user_id, product_id, actual_rating = row[0], row[1], row[2]
                 loss, residual = self.loss_function(
@@ -98,12 +86,12 @@ class ALSModel:
                     # TODO: use enum to determine the column indices
                     regularization=self.regularization,
                     row=row,
-                    user_metadata_range=ptd.user_metadata_range,
-                    prod_metadata_range=ptd.prod_metadata_range
+                    user_metadata_range=user_metadata_range,
+                    prod_metadata_range=prod_metadata_range
                 )
-                filtered_prod = np.where(ptd.training_data[:, 0] == user_id)
-                grad_user_metadata += residual * np.dot(ptd.training_data[filtered_prod, ptd.user_metadata_range], user_metadata_weights)
-                grad_prod_metadata += residual * np.dot(ptd.training_data[filtered_prod, ptd.product_metadata_range], prod_metadata_weights)
+                filtered_prod = np.where(training_data[:, 0] == user_id)
+                grad_user_metadata += residual * np.dot(training_data[filtered_prod, user_metadata_range], user_metadata_weights)
+                grad_prod_metadata += residual * np.dot(training_data[filtered_prod, product_metadata_range], prod_metadata_weights)
             self.loss_iter_pair.append((iteration, loss))
             latent = self.generate_latent_factors(
                 row, 
@@ -111,8 +99,8 @@ class ALSModel:
                 prod_latent_weights, 
                 user_metadata_weights,
                 prod_metadata_weights, 
-                ptd.user_metadata_range, 
-                ptd.user_metadata_range
+                user_metadata_range, 
+                user_metadata_range
             )
             # Update weights based on the loss
             # This is where the ALS update logic will go
@@ -132,7 +120,7 @@ class ALSModel:
             user_latent_weights, prod_latent_weights = self.update_latent_factors(
                 user_id, 
                 product_id, 
-                ptd.training_data, 
+                training_data, 
                 global_mean, 
                 user_bias, 
                 item_bias, 
@@ -147,7 +135,41 @@ class ALSModel:
                 grad_prod_metadata,
                 self.eta
             )
-        return
+        return TrainingResult(
+            parameters={
+                'n_iter': self.n_iter,
+                'latent_factors': self.latent_factors,
+                'regularization': self.regularization,
+                'eta': self.eta
+            },
+            user_weights=user_latent_weights,
+            item_weights=prod_latent_weights,
+            user_bias=user_bias,
+            item_bias=item_bias,
+            user_index_map=self.user_idx_map,
+            product_index_map=self.product_index_map,
+            global_mean=global_mean,
+            final_loss=self.loss_iter_pair[-1][1]
+        )
+
+    def predict_order(self, training_result: TrainingResult, user_id: int, product_index_map: Dict[int, int]) -> List[int]:
+        rank = []
+        for product_key_id, product_id in product_index_map.items():
+            result = self.predict(training_result, user_id, product_id)
+            rank.append([product_key_id, result])
+        rank.sort(key=lambda x: x[1], reverse=True)
+        return [item[0] for item in rank]
+
+    def predict(self, training_result: TrainingResult, user_id: int, product_id: int) -> float:
+        """Make a prediction for a given user and product."""
+        user_latent = training_result.user_weights[user_id]
+        item_latent = training_result.item_weights[product_id]
+        user_b = training_result.user_bias[user_id]
+        item_b = training_result.item_bias[product_id]
+        global_mean = training_result.global_mean
+
+        prediction = (user_latent @ item_latent) + user_b + item_b + global_mean
+        return prediction
 
     def loss_function(self, 
         global_mean: float, 
@@ -163,10 +185,11 @@ class ALSModel:
     ) -> float:
         """Compute the loss function."""
         # Implementation will go here
-        user, item, actual_rating = row[0], row[1], row[2]  # Assuming user, item, rating are in the first three columns
+        user, item, actual_rating = int(row[0]), int(row[1]), row[2]  # Assuming user, item, rating are in the first three columns
 
-        user_b = user_bias * user
-        item_b = item_bias * item
+        # find user and item biases, if not found, return 0.0
+        user_b = user_bias[user]
+        item_b = item_bias[item]
 
         metadata_regularization = np.sum(user_metadata_weights ** 2) + np.sum(prod_metadata_weights ** 2)
         latent_regularization = np.sum(user_latent_weights[user] ** 2) + np.sum(prod_latent_weights[item] ** 2) 
@@ -188,11 +211,10 @@ class ALSModel:
         latent: float = 0.0,
     ) -> float:
         """Update the residual loss"""
-        user_b = user_bias * user_id
-        item_b = item_bias * prod_id
+        user_b = user_bias[user_id]
+        item_b = item_bias[prod_id]
         residual = (actual_rating - (latent + user_b + item_b + global_mean))
         return residual
-
 
     def update_latent_factors(self,
         user_id: int,
@@ -273,12 +295,12 @@ class ALSModel:
         """Update user and product metadata weights."""
 
         step = 2 * eta * (gradient - self.regularization * user_metadata_weights)
-        user_metadata_weights += step
+        new_user_metadata_weights = user_metadata_weights +  step
 
         step = 2 * eta * (gradient - self.regularization * prod_metadata_weights)
-        prod_metadata_weights += step
+        new_prod_metadata_weights = prod_metadata_weights + step
 
-        return user_metadata_weights, prod_metadata_weights
+        return new_user_metadata_weights, new_prod_metadata_weights
 
 class Trainer:
     """Main training class that manages the training process."""
@@ -286,13 +308,33 @@ class Trainer:
     def __init__(self, hp: ALSHyperParameters):
         """Initialize the trainer with an ALS model."""
         self.hp = hp
+
+    def get_data_from_indices(self, base_data, train_indices: List[RangeIndex], test_indices: RangeIndex):
+        if train_indices:
+            tdata = np.concatenate([base_data[ti.start:ti.end] for ti in train_indices])
+        else:
+            # Handle empty train_indices case
+            tdata = np.empty((0, base_data.shape[1]), dtype=base_data.dtype)
+        vdata = base_data[test_indices.start:test_indices.end]
+        return tdata, vdata
     
-    def find_best_parameters(self, preprocessed_data) -> TrainingResult:
+    def find_best_parameters(self, preprocessed_data: ProcessedTrainingData) -> TrainingResult:
         """Find best parameters using cross-validation."""
-        # Implementation will go here
-        pass
-    
-    def train_model(self, preprocessed_data) -> TrainingResult:
-        """Train the model with the given preprocessed data."""
-        # Implementation will go here
-        pass
+        possible_parameter = self.hp.to_dict()
+        param_combinations = itertools.product(*possible_parameter.values())
+        test_results = []
+        for pc in param_combinations:
+            fold_indices_pick = np.random.choice(preprocessed_data.fold_indices, size=len(preprocessed_data.fold_indices), replace=False)
+            fold = preprocessed_data.fold_indices[fold_indices_pick]
+            params = dict(zip(possible_parameter.keys(), pc))
+            model = ALSModel(**params)
+            tdata, vdata = self.get_data_from_indices(preprocessed_data.training_data, fold.train_index, fold.test_index)
+            tr = model.fit(tdata, preprocessed_data.user_metadata_range, preprocessed_data.product_metadata_range)
+            training_results.append(tr)
+            rank_list = model.predict_order(vdata, user_id, tr.product_index_map)
+            sliced = np.where(vdata, vdata[:, 0] == user_id)
+            sorted(sliced, lambda x: x[3], reverse=True)
+            dist = np.sum([0 if a == b else 1 for a, b in zip(rank_list, sliced)])
+            test_results.append([tr, dist])
+        best_result = min(test_results, key=lambda x: x[1])
+        return best_result
