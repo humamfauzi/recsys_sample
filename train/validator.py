@@ -46,6 +46,14 @@ class DataValidator(DataValidatorInterface):
         cleaned_ratings = self.ratings[~np.isnan(self.ratings[:, 2].astype(float))]
         return cleaned_ratings
 
+    def remove_null_release_year(self, ratings: np.ndarray) -> np.ndarray:
+        """Remove products with null release year."""
+        cleaned_products = self.products[self.products[:, 2] != ""]
+        # Remove ratings for products that don't exist in cleaned products
+        cleaned_product_ids = set(cleaned_products[:, 0].astype(int))
+        cleaned_ratings = ratings[np.isin(ratings[:, 1].astype(int), list(cleaned_product_ids))]
+        return cleaned_products, cleaned_ratings
+
     def validate_all(self) -> BaseData:
         """Run all validation checks and return cleaned ratings data."""
         if missing_users := self.validate_users_exist_in_ratings():
@@ -53,4 +61,6 @@ class DataValidator(DataValidatorInterface):
         if missing_products := self.validate_products_exist_in_ratings():
             raise ValueError(f"Missing products in ratings: {missing_products}")
         cleaned_ratings = self.remove_null_ratings()
-        return BaseData(rating=cleaned_ratings, user=self.users, product=self.products)
+        products, cleaned_ratings = self.remove_null_release_year(cleaned_ratings)
+        cleaned_ratings = cleaned_ratings.astype(float)
+        return BaseData(rating=cleaned_ratings, user=self.users, product=products)

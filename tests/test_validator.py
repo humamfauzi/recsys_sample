@@ -14,10 +14,10 @@ class TestDataValidator(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         users = np.array([[1, 'User1'], [2, 'User2']])
-        products = np.array([[1, 'Product1'], [2, 'Product2']])
+        products = np.array([[1, 'Product1', '2024-01-23'], [2, 'Product2', '2024-01-24'], [3, 'Product3', '']])
 
         ratings_failed_user = np.array([[1, 1, 5], [2, 2, 4], [3, 1, 3]])  # User ID 3 does not exist
-        ratings_failed_product = np.array([[1, 1, 5], [2, 3, 4], [1, 2, 3]])  # Product ID 3 does not exist
+        ratings_failed_product = np.array([[1, 1, 5], [2, 3, 4], [1, 4, 3]])  # Product ID 4 does not exist
         ratings_null = np.array([[1, 1, 5], [2, 2, np.nan], [1, 2, 3]])
         ratings_success = np.array([[1, 1, 5], [2, 2, 4], [1, 2, 3]])
 
@@ -42,7 +42,8 @@ class TestDataValidator(unittest.TestCase):
         self.assertEqual(missing, set())
 
         missing = self.validator_failed_product.validate_products_exist_in_ratings()
-        self.assertEqual(missing, {3})  # Product ID 3 does not exist
+        print("missing", missing)
+        self.assertEqual(missing, {4})  # Product ID 3 does not exist
 
     def test_remove_null_ratings(self):
         """Test removal of null rating values."""

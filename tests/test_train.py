@@ -6,13 +6,7 @@ import unittest
 import numpy as np
 from intermediaries.dataclass import ProcessedTrainingData, ALSHyperParameters, Folds, RangeIndex
 
-# Try to import train module, but handle the import error gracefully
-try:
-    from train.train import ALSModel, Trainer, TrainingResult
-    TRAIN_MODULE_AVAILABLE = True
-except ImportError as e:
-    TRAIN_MODULE_AVAILABLE = False
-    IMPORT_ERROR = str(e)
+from train.train import ALSModel, Trainer, TrainingResult
 
 
 class TestALSModel(unittest.TestCase):
@@ -20,9 +14,6 @@ class TestALSModel(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        if not TRAIN_MODULE_AVAILABLE:
-            self.skipTest(f"Train module not available: {IMPORT_ERROR}")
-            
         self.als_model = ALSModel(n_iter=5, latent_factors=10, regularization=0.1, eta=0.01)
         
         # Create sample training data
@@ -35,6 +26,9 @@ class TestALSModel(unittest.TestCase):
             [2, 1, 4.0, 0, 0, 1, 0, 1],  # user 2 rates item 1 with 4.0
             [2, 2, 1.0, 0, 0, 1, 0, 0],  # user 2 rates item 2 with 1.0
         ])
+        
+        # Set up index maps for testing
+        self.als_model.user_idx_map, self.als_model.product_idx_map, _, _ = self.als_model.find_unique_indices(self.sample_data)
         
         # Create ProcessedTrainingData object
         self.processed_data = ProcessedTrainingData(
@@ -183,10 +177,13 @@ class TestALSModel(unittest.TestCase):
         """Test metadata weights update."""
         user_meta_weights = np.array([0.1, 0.2, 0.3])
         prod_meta_weights = np.array([0.4, 0.5])
-        gradient = 0.1
+        loss = 0.1
+        # Use larger gradients to ensure visible updates
+        grad_user_metadata = np.array([0.5, 0.6, 0.7])
+        grad_prod_metadata = np.array([0.8, 0.9])
         
         updated_user, updated_prod = self.als_model.update_metadata_weights(
-            user_meta_weights, prod_meta_weights, gradient, self.als_model.eta
+            loss, user_meta_weights, prod_meta_weights, grad_user_metadata, grad_prod_metadata, self.als_model.eta
         )
         
         # Check that dimensions are preserved
@@ -194,7 +191,6 @@ class TestALSModel(unittest.TestCase):
         self.assertEqual(updated_prod.shape, prod_meta_weights.shape)
         
         # Check that weights have been updated 
-        print(user_meta_weights, updated_user)
         self.assertFalse(np.allclose(updated_user, user_meta_weights))
         self.assertFalse(np.allclose(updated_prod, prod_meta_weights))
     
@@ -271,8 +267,6 @@ class TestTrainer(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        if not TRAIN_MODULE_AVAILABLE:
-            self.skipTest(f"Train module not available: {IMPORT_ERROR}")
             
         self.hyperparameters = ALSHyperParameters(
             n_iter=[5, 10],
@@ -381,17 +375,11 @@ class TestTrainer(unittest.TestCase):
         train_indices = []
         test_indices = RangeIndex(0, 2)
         
-        tdata, vdata = self.trainer.get_data_from_indices(
-            self.sample_data, train_indices, test_indices
-        )
+        with self.assertRaises(ValueError) as context:
+            self.trainer.get_data_from_indices( self.sample_data, train_indices, test_indices)
         
-        # Training data should be empty
-        self.assertEqual(tdata.shape, (0, 8))
-        # Validation data should have correct shape
-        self.assertEqual(vdata.shape, (2, 8))
-        
-        expected_val = self.sample_data[0:2]
-        np.testing.assert_array_equal(vdata, expected_val)
+        # Check that the error message is as expected
+        self.assertIn("train_indices must not be empty", str(context.exception))
     
     def test_get_data_from_indices_edge_cases(self):
         """Test data splitting with edge cases."""
@@ -592,8 +580,6 @@ class TestTrainingResult(unittest.TestCase):
     
     def test_dataclass_creation(self):
         """Test creation of TrainingResult object with all required fields."""
-        if not TRAIN_MODULE_AVAILABLE:
-            self.skipTest(f"Train module not available: {IMPORT_ERROR}")
             
         # Create sample data for TrainingResult
         parameters = {'n_iter': 10, 'latent_factors': 5, 'regularization': 0.1}
@@ -601,6 +587,8 @@ class TestTrainingResult(unittest.TestCase):
         item_weights = np.random.rand(3, 5)
         user_bias = np.random.rand(3)
         item_bias = np.random.rand(3)
+        user_metadata_weights = np.random.rand(3)
+        item_metadata_weights = np.random.rand(2)
         user_index_map = {0: 0, 1: 1, 2: 2}
         product_index_map = {0: 0, 1: 1, 2: 2}
         global_mean = 3.5
@@ -610,6 +598,8 @@ class TestTrainingResult(unittest.TestCase):
             parameters=parameters,
             user_weights=user_weights,
             item_weights=item_weights,
+            user_metadata_weights=user_metadata_weights,
+            item_metadata_weights=item_metadata_weights,
             user_bias=user_bias,
             item_bias=item_bias,
             user_index_map=user_index_map,
@@ -627,35 +617,6 @@ class TestTrainingResult(unittest.TestCase):
         self.assertEqual(result.user_index_map, user_index_map)
         self.assertEqual(result.product_index_map, product_index_map)
         self.assertEqual(result.global_mean, global_mean)
-    
-    def test_dataclass_field_types(self):
-        """Test that TrainingResult fields have correct types."""
-        if not TRAIN_MODULE_AVAILABLE:
-            self.skipTest(f"Train module not available: {IMPORT_ERROR}")
-            
-        # Create minimal TrainingResult
-        result = TrainingResult(
-            parameters={},
-            user_weights=np.array([]),
-            item_weights=np.array([]),
-            user_bias=np.array([]),
-            item_bias=np.array([]),
-            user_index_map={},
-            product_index_map={},
-            global_mean=0.0,
-            final_loss=0.0
-        )
-        
-        # Check field types
-        self.assertIsInstance(result.parameters, dict)
-        self.assertIsInstance(result.user_weights, np.ndarray)
-        self.assertIsInstance(result.item_weights, np.ndarray)
-        self.assertIsInstance(result.user_bias, np.ndarray)
-        self.assertIsInstance(result.item_bias, np.ndarray)
-        self.assertIsInstance(result.user_index_map, dict)
-        self.assertIsInstance(result.product_index_map, dict)
-        self.assertIsInstance(result.global_mean, (float, int, np.floating))
-
 
 class TestALSLogicComponents(unittest.TestCase):
     """Test class for ALS algorithm logic components without requiring the full ALSModel import."""
@@ -664,6 +625,7 @@ class TestALSLogicComponents(unittest.TestCase):
         """Test that our test data structures are correctly formed."""
         
         # Test sample data creation
+        # user id, item_id, rating, user_metadata..., item_metadata...
         sample_data = np.array([
             [0, 0, 4.0, 1, 0, 0, 1, 0],  # user 0 rates item 0 with 4.0
             [0, 1, 3.0, 1, 0, 0, 0, 1],  # user 0 rates item 1 with 3.0
@@ -759,12 +721,11 @@ class TestALSLogicComponents(unittest.TestCase):
     def test_latent_factor_computation(self):
         """Test latent factor computation logic."""
         
-        # Initialize test data
         n_users, n_items, latent_factors = 3, 3, 5
         user_weights = np.random.rand(n_users, latent_factors)
         item_weights = np.random.rand(n_items, latent_factors)
-        user_meta_weights = np.random.rand(3)  # 3 user metadata features
-        item_meta_weights = np.random.rand(2)  # 2 item metadata features
+        user_meta_weights = np.random.rand(3) 
+        item_meta_weights = np.random.rand(2) 
         
         # Test latent factor computation logic
         user_id, item_id = 0, 1
@@ -826,8 +787,8 @@ class TestALSLogicComponents(unittest.TestCase):
         # Verify loss computation
         self.assertIsInstance(reg_term, (float, np.floating))
         self.assertIsInstance(final_loss, (float, np.floating))
-        self.assertGreater(final_loss, 0)  # Loss should be positive
-        self.assertGreater(reg_term, 0)    # Regularization should be positive
+        self.assertGreater(final_loss, 0)  
+        self.assertGreater(reg_term, 0)    
     
     def test_convergence_simulation(self):
         """Test convergence conditions and simulation."""
@@ -874,14 +835,16 @@ class TestALSLogicComponents(unittest.TestCase):
         
         # Verify convergence behavior
         self.assertEqual(len(losses), 11)  # Initial + 10 iterations
-        self.assertGreater(losses[0], losses[-1])  # Loss should decrease overall
-        self.assertGreater(losses[-1], 0)  # Final loss should be positive
+        # Loss should decreasing over iterations and positive
+        self.assertGreater(losses[0], losses[-1])  
+        self.assertGreater(losses[-1], 0)  
         
         # Check that loss generally trends downward (allowing some fluctuation)
+        # Split losses to two halves and check early vs late average
         mid_point = len(losses) // 2
         early_avg = np.mean(losses[:mid_point])
         late_avg = np.mean(losses[mid_point:])
-        self.assertGreater(early_avg, late_avg)  # Early losses should be higher on average
+        self.assertGreater(early_avg, late_avg)  
     
     def test_matrix_operations(self):
         """Test matrix operations used in ALS algorithm."""

@@ -27,7 +27,10 @@ serve:
 
 # Run all tests
 test:
-	python3 -m unittest discover tests -v
+	python3 -m unittest discover tests
+
+run-train:
+	python -m train.main
 
 # Clean build artifacts
 clean:

@@ -59,7 +59,7 @@ class DataPreprocessorMovieLens(DataProcessorInterface):
             self.encode_gender(user_data).reshape(-1, 1),
             self.encode_profession(user_data)
         ))
-        return stacked.astype(int)
+        return stacked
 
     def drop_name(self, product_arr: np.ndarray) -> np.ndarray:
         """Drop the name column from user data."""
@@ -103,7 +103,7 @@ class DataPreprocessorMovieLens(DataProcessorInterface):
         """Merge all three different arrays into one large array."""
         encoded_user_data = self.encode_user_data(basedata.user)
         encoded_product_data = self.encode_product_data(basedata.product)
-        rating_data = np.delete(basedata.rating, [-1], axis=1)
+        rating_data = np.delete(basedata.rating, [-1], axis=1).astype(int)
 
         merged_columns = rating_data.shape[1] + encoded_user_data.shape[1] + encoded_product_data.shape[1]
         user_metadata_range = range(rating_data.shape[1], rating_data.shape[1] + encoded_user_data.shape[1])
@@ -113,10 +113,15 @@ class DataPreprocessorMovieLens(DataProcessorInterface):
         for i in range(rating_data.shape[0]):
             user_id = rating_data[i, 0]
             product_id = rating_data[i, 1]
+            
+            rating_data_reshaped = rating_data[i, :].reshape(-1)
+            filtered_encoded_user_data = encoded_user_data[encoded_user_data[:, 0] == user_id].reshape(-1)
+            filtered_encoded_item_data = encoded_product_data[encoded_product_data[:, 0] == product_id].reshape(-1)
+
             merged[i, :] = np.hstack((
-                rating_data[i, :].reshape(-1), 
-                encoded_user_data[encoded_user_data[:, 0] == user_id].reshape(-1),
-                encoded_product_data[encoded_product_data[:, 0] == product_id].reshape(-1)
+                rating_data_reshaped,
+                filtered_encoded_user_data,
+                filtered_encoded_item_data
             ))
         return merged, user_metadata_range, product_metadata_range
 

@@ -18,6 +18,8 @@ class ALSModel:
         self.latent_factors = latent_factors
         self.regularization = regularization
         self.eta = eta  # Learning rate for metadata weights
+        self.user_idx_map = {}
+        self.product_idx_map = {}
 
     def initialize_weights_and_bias(self, n_users: int, n_items: int) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """Initialize user and item weights and biases."""
@@ -43,27 +45,32 @@ class ALSModel:
         user_metadata_range: range = None,
         prod_metadata_range: range = None
     ) -> float:
-        user, item = row[0], row[1]
+        user, item = int(row[0]), int(row[1])
+        user_idx = self.user_idx_map.get(user, -1)
+        if user_idx == -1:
+            raise ValueError(f"User {user} not found in user index map.")
+        product_idx = self.product_idx_map.get(item, -1)
+        if product_idx == -1:
+            raise ValueError(f"Product {item} not found in product index map.")
         user_metadata = np.dot(row[user_metadata_range], user_metadata_weights)
         item_metadata = np.dot(row[prod_metadata_range], prod_metadata_weights)
-        print("user", user)
-        user_latent = user_latent_weights[int(user)] + user_metadata
-        item_latent = prod_latent_weights[int(item)] + item_metadata
+        user_latent = user_latent_weights[user_idx] + user_metadata
+        item_latent = prod_latent_weights[product_idx] + item_metadata
         latent = np.dot(user_latent, item_latent)
         return latent
 
     def find_unique_indices(self, data: NDArray[np.float64]) -> Tuple[Dict[int, int], Dict[int, int], int, int]:
         """Find unique user and product indices."""
-        unique_users = np.unique(data[:, 0])
-        unique_products = np.unique(data[:, 1])
+        unique_users = np.unique(data[:, 0]).astype(int)
+        unique_products = np.unique(data[:, 1]).astype(int)
         
-        user_index_map = {user: idx for idx, user in enumerate(unique_users)}
-        product_index_map = {product: idx for idx, product in enumerate(unique_products)}
+        user_index_map = {int(user): idx for idx, user in enumerate(unique_users)}
+        product_index_map = {int(product): idx for idx, product in enumerate(unique_products)}
         return user_index_map, product_index_map, len(unique_users), len(unique_products)
 
     def fit(self, training_data: NDArray, user_metadata_range: range, product_metadata_range: range) -> TrainingResult:
         """Train the ALS model on training data."""
-        self.user_idx_map, self.product_index_map, n_users, n_items = self.find_unique_indices(training_data)
+        self.user_idx_map, self.product_idx_map, n_users, n_items = self.find_unique_indices(training_data)
         # TODO: use enum to determine the column indices
         global_mean = np.mean(training_data[:, 2])  # Assuming ratings are in the third column
         user_latent_weights, prod_latent_weights, user_bias, item_bias = self.initialize_weights_and_bias(n_users, n_items)
@@ -86,12 +93,9 @@ class ALSModel:
                     # TODO: use enum to determine the column indices
                     regularization=self.regularization,
                     row=row,
-                    user_metadata_range=user_metadata_range,
-                    prod_metadata_range=prod_metadata_range
                 )
-                filtered_prod = np.where(training_data[:, 0] == user_id)
-                grad_user_metadata += residual * np.dot(training_data[filtered_prod, user_metadata_range], user_metadata_weights)
-                grad_prod_metadata += residual * np.dot(training_data[filtered_prod, product_metadata_range], prod_metadata_weights)
+                grad_user_metadata += residual * np.outer(prod_latent_weights[self.product_idx_map[product_id]], row[user_metadata_range])
+                grad_prod_metadata += residual * np.outer(user_latent_weights[self.user_idx_map[user_id]], row[product_metadata_range])
             self.loss_iter_pair.append((iteration, loss))
             latent = self.generate_latent_factors(
                 row, 
@@ -100,22 +104,19 @@ class ALSModel:
                 user_metadata_weights,
                 prod_metadata_weights, 
                 user_metadata_range, 
-                user_metadata_range
+                product_metadata_range
             )
             # Update weights based on the loss
             # This is where the ALS update logic will go
             user_bias, item_bias = self.update_bias(
+                self.user_idx_map[user_id],
+                self.product_idx_map[product_id],
                 loss, 
                 global_mean,
-                user_latent_weights,
-                prod_latent_weights,
                 user_bias, 
                 item_bias,
-                user_metadata_weights,
-                prod_metadata_weights,
-                regularization=self.regularization,
-                row=row,
-                latent=latent
+                training_data,
+                latent
             )
             user_latent_weights, prod_latent_weights = self.update_latent_factors(
                 user_id, 
@@ -144,10 +145,12 @@ class ALSModel:
             },
             user_weights=user_latent_weights,
             item_weights=prod_latent_weights,
+            user_metadata_weights=user_metadata_weights,
+            item_metadata_weights=prod_metadata_weights,
             user_bias=user_bias,
             item_bias=item_bias,
             user_index_map=self.user_idx_map,
-            product_index_map=self.product_index_map,
+            product_index_map=self.product_idx_map,
             global_mean=global_mean,
             final_loss=self.loss_iter_pair[-1][1]
         )
@@ -186,16 +189,22 @@ class ALSModel:
         """Compute the loss function."""
         # Implementation will go here
         user, item, actual_rating = int(row[0]), int(row[1]), row[2]  # Assuming user, item, rating are in the first three columns
+        user_idx = self.user_idx_map.get(user, -1)
+        if user_idx == -1:
+            raise ValueError(f"User {user} not found in user index map.")
+
+        product_idx = self.product_idx_map.get(item, -1)
+        if product_idx == -1:
+            raise ValueError(f"Product {item} not found in product index map.")
 
         # find user and item biases, if not found, return 0.0
-        user_b = user_bias[user]
-        item_b = item_bias[item]
+        user_b = user_bias[user_idx]
+        item_b = item_bias[product_idx]
 
         metadata_regularization = np.sum(user_metadata_weights ** 2) + np.sum(prod_metadata_weights ** 2)
-        latent_regularization = np.sum(user_latent_weights[user] ** 2) + np.sum(prod_latent_weights[item] ** 2) 
+        latent_regularization = np.sum(user_latent_weights[user_idx] ** 2) + np.sum(prod_latent_weights[product_idx] ** 2)
         bias_regularization = np.sum(user_bias ** 2) + np.sum(item_bias ** 2)
         regularization_term = regularization * (latent_regularization + bias_regularization + metadata_regularization)
-
         residual = (actual_rating - (latent + user_b + item_b + global_mean))
         final_loss = residual ** 2 + regularization_term
 
@@ -226,48 +235,73 @@ class ALSModel:
         prod_latent_weights: NDArray[np.float64],
         user_latent_weights: NDArray[np.float64],
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
-        rated_prod = np.where(training_data[:, 0] == user_id)
-        unique_products_rated_by_user = np.unique(training_data[rated_prod, 1])
-        filtered_latent_prod = np.array([prod_latent_weights[prod] for prod in unique_products_rated_by_user])
-        residuals = [self.loss_function_residual(
-            user_id, 
-            prod, 
-            training_data[rated_prod, 2],  # TODO: use enum to determine the column index for rating
-            global_mean, 
-            user_bias, 
-            item_bias,
-            filtered_latent_prod,
-        ) for prod in unique_products_rated_by_user]
-        new_user_latent = self.solve_latent(residuals, filtered_latent_prod, self.regularization)
+        rated_prod = np.where(training_data[:, 0] == user_id)[0]
+        unique_products_rated_by_user = np.unique(training_data[rated_prod, 1]).astype(int)
+        filtered_latent_prod = np.array([prod_latent_weights[self.product_idx_map[prod]] for prod in unique_products_rated_by_user])
+        ratings_by_user = training_data[rated_prod, 2]
+        
+        residuals = []
+        for i, prod in enumerate(unique_products_rated_by_user):
+            prod_idx = self.product_idx_map[prod]
+            residual = self.loss_function_residual(
+                self.user_idx_map[user_id], 
+                prod_idx, 
+                ratings_by_user[i],
+                global_mean, 
+                user_bias, 
+                item_bias,
+                0.0  # latent placeholder
+            )
+            residuals.append(residual)
+        
+        new_user_latent = self.solve_latent(np.array(residuals), filtered_latent_prod, self.regularization)
 
-        rated_users = np.where(training_data[:, 1] == product_id)
-        unique_users_rated_product = np.unique(training_data[rated_users, 0])
-        filtered_latent_user = np.array([user_latent_weights[user] for user in unique_users_rated_product])
-        residuals = [self.loss_function_residual(
-            user,
-            product_id,
-            training_data[rated_users, 2],  # TODO: use enum to determine the column index for rating
-            global_mean,
-            user_bias,
-            item_bias,
-            filtered_latent_user,
-        ) for user in unique_users_rated_product]
-        new_prod_latent = self.solve_latent(residuals, filtered_latent_user, self.regularization)
-        return new_user_latent, new_prod_latent
+        rated_users = np.where(training_data[:, 1] == product_id)[0]
+        unique_users_rated_product = np.unique(training_data[rated_users, 0]).astype(int)
+        filtered_latent_user = np.array([user_latent_weights[self.user_idx_map[user]] for user in unique_users_rated_product])
+        ratings_for_product = training_data[rated_users, 2]
+        
+        residuals = []
+        for i, user in enumerate(unique_users_rated_product):
+            user_idx = self.user_idx_map[user]
+            residual = self.loss_function_residual(
+                user_idx,
+                self.product_idx_map[product_id],
+                ratings_for_product[i],
+                global_mean,
+                user_bias,
+                item_bias,
+                0.0  # latent placeholder
+            )
+            residuals.append(residual)
+            
+        new_prod_latent = self.solve_latent(np.array(residuals), filtered_latent_user, self.regularization)
+        
+        # Update the latent factors in the original arrays
+        user_latent_weights[self.user_idx_map[user_id]] = new_user_latent
+        prod_latent_weights[self.product_idx_map[product_id]] = new_prod_latent
+        
+        return user_latent_weights, prod_latent_weights
 
     def solve_latent(self,
         residuals: NDArray[np.float64],
         filtered: NDArray[np.float64],
         regularization: float,
     ) -> NDArray[np.float64]:
-        A = np.dot(filtered.T, filtered) + regularization * np.eye(self.latent_factors)
-        B = filtered.T @ np.array(residuals)
-        return np.linalg.solve(A, B)
+        try:
+            A = np.dot(filtered.T, filtered) + regularization * np.eye(self.latent_factors)
+            B = filtered.T @ np.array(residuals)
+            return np.linalg.solve(A, B)
+        except np.linalg.LinAlgError:
+            # If matrix is singular, use pseudo-inverse
+            A = np.dot(filtered.T, filtered) + regularization * np.eye(self.latent_factors)
+            B = filtered.T @ np.array(residuals)
+            return np.linalg.pinv(A) @ B
         
 
     def update_bias(self, 
-        item_id: int,
         user_id: int,
+        item_id: int,
         loss: float, 
         global_mean: float,
         user_bias: NDArray[np.float64], 
@@ -276,29 +310,51 @@ class ALSModel:
         latent: float
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Update user and item biases."""
-        user_indices = np.where(training_data[:, 0] == user_id)
-        item_indices = np.where(training_data[:, 1] == item_id)
-
-        updated_user_bias = np.sum(loss - global_mean - item_bias[item_indices] - latent) 
+        # Find all items rated by this user
+        user_indices = np.where(training_data[:, 0] == user_id)[0]
+        # Find all users who rated this item
+        item_indices = np.where(training_data[:, 1] == item_id)[0]
+        
+        updated_user_bias = np.sum(loss - global_mean - item_bias[item_id] - latent) 
         updated_user_bias = updated_user_bias / (len(user_indices) + self.regularization)
 
-        updated_item_bias = np.sum(loss - global_mean - user_bias[user_indices] - latent)
+        updated_item_bias = np.sum(loss - global_mean - user_bias[user_id] - latent)
         updated_item_bias = updated_item_bias / (len(item_indices) + self.regularization)
-        return updated_user_bias, updated_item_bias
+        
+        # Update the bias arrays
+        user_bias[user_id] = updated_user_bias
+        item_bias[item_id] = updated_item_bias
+        
+        return user_bias, item_bias
 
     def update_metadata_weights(self,
+        loss: float,
         user_metadata_weights: NDArray[np.float64],
         prod_metadata_weights: NDArray[np.float64],
-        gradient: float,
-        eta: float = 0.01
+        grad_user_metadata: NDArray[np.float64],
+        grad_prod_metadata: NDArray[np.float64],
+        eta: float
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Update user and product metadata weights."""
 
-        step = 2 * eta * (gradient - self.regularization * user_metadata_weights)
-        new_user_metadata_weights = user_metadata_weights +  step
+        # Ensure gradients are properly shaped
+        if grad_user_metadata.ndim > 1:
+            grad_user_metadata = grad_user_metadata.flatten()
+        if grad_prod_metadata.ndim > 1:
+            grad_prod_metadata = grad_prod_metadata.flatten()
+            
+        # Ensure gradients match weights dimensions
+        if len(grad_user_metadata) != len(user_metadata_weights):
+            grad_user_metadata = grad_user_metadata[:len(user_metadata_weights)]
+        if len(grad_prod_metadata) != len(prod_metadata_weights):
+            grad_prod_metadata = grad_prod_metadata[:len(prod_metadata_weights)]
 
-        step = 2 * eta * (gradient - self.regularization * prod_metadata_weights)
-        new_prod_metadata_weights = prod_metadata_weights + step
+        # Gradient descent update: w = w - eta * (regularization * w - gradient)
+        step_user = eta * (grad_user_metadata - self.regularization * user_metadata_weights)
+        new_user_metadata_weights = user_metadata_weights + step_user
+
+        step_prod = eta * (grad_prod_metadata - self.regularization * prod_metadata_weights)
+        new_prod_metadata_weights = prod_metadata_weights + step_prod
 
         return new_user_metadata_weights, new_prod_metadata_weights
 
@@ -310,11 +366,11 @@ class Trainer:
         self.hp = hp
 
     def get_data_from_indices(self, base_data, train_indices: List[RangeIndex], test_indices: RangeIndex):
-        if train_indices:
-            tdata = np.concatenate([base_data[ti.start:ti.end] for ti in train_indices])
-        else:
-            # Handle empty train_indices case
-            tdata = np.empty((0, base_data.shape[1]), dtype=base_data.dtype)
+        if not isinstance(train_indices, list):
+            raise TypeError(f"Expected list of RangeIndex for train_indices, got {type(train_indices)}")
+        if train_indices is None or len(train_indices) == 0:
+            raise ValueError("train_indices must not be empty")
+        tdata = np.concatenate([base_data[ti.start:ti.end] for ti in train_indices])
         vdata = base_data[test_indices.start:test_indices.end]
         return tdata, vdata
     
@@ -323,18 +379,28 @@ class Trainer:
         possible_parameter = self.hp.to_dict()
         param_combinations = itertools.product(*possible_parameter.values())
         test_results = []
+        training_results = []
+        
         for pc in param_combinations:
-            fold_indices_pick = np.random.choice(preprocessed_data.fold_indices, size=len(preprocessed_data.fold_indices), replace=False)
-            fold = preprocessed_data.fold_indices[fold_indices_pick]
+            fold_indices_pick: Folds = np.random.choice(preprocessed_data.fold_indices, replace=False)
             params = dict(zip(possible_parameter.keys(), pc))
             model = ALSModel(**params)
-            tdata, vdata = self.get_data_from_indices(preprocessed_data.training_data, fold.train_index, fold.test_index)
+            tdata, vdata = self.get_data_from_indices(preprocessed_data.training_data, fold_indices_pick.train_index, fold_indices_pick.test_index)
             tr = model.fit(tdata, preprocessed_data.user_metadata_range, preprocessed_data.product_metadata_range)
             training_results.append(tr)
-            rank_list = model.predict_order(vdata, user_id, tr.product_index_map)
-            sliced = np.where(vdata, vdata[:, 0] == user_id)
-            sorted(sliced, lambda x: x[3], reverse=True)
-            dist = np.sum([0 if a == b else 1 for a, b in zip(rank_list, sliced)])
+            
+            # Get a sample user for ranking
+            user_id = int(vdata[0, 0])  # Use first user in validation set
+            rank_list = model.predict_order(tr, user_id, tr.product_index_map)
+            
+            # Get actual ratings for this user
+            user_ratings = vdata[vdata[:, 0] == user_id]
+            sorted_ratings = user_ratings[user_ratings[:, 2].argsort()[::-1]]  # Sort by rating descending
+            actual_order = sorted_ratings[:, 1].astype(int).tolist()  # Get item IDs in rating order
+            
+            # Calculate ranking distance
+            dist = np.sum([0 if a == b else 1 for a, b in zip(rank_list, actual_order)])
             test_results.append([tr, dist])
+            
         best_result = min(test_results, key=lambda x: x[1])
-        return best_result
+        return best_result[0]

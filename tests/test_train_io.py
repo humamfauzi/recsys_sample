@@ -8,6 +8,8 @@ from train.io import DataIO
 import os
 import tempfile
 import shutil
+import json
+from intermediaries.dataclass import TrainingResult
 
 
 class TestDataIOInterface(unittest.TestCase):
@@ -45,7 +47,7 @@ class TestDataIO(unittest.TestCase):
         with open(self.users_file, 'w') as f:
             f.write(users_data)
         
-        self.products_file = os.path.join(self.test_data_dir, 'product')
+        self.products_file = os.path.join(self.test_data_dir, 'item')
         products_data = ""
         products_data += "1|Toy Story (1995)|01-Jan-1995||http://us.imdb.com/M/title-exact?Toy%20Story%20(1995)|0|0|0|1|1|1|0|0|0|0|0|0|0|0|0|0|0|0|0\n"
         products_data += "2|GoldenEye (1995)|01-Jan-1995||http://us.imdb.com/M/title-exact?GoldenEye%20(1995)|0|1|1|0|0|0|0|0|0|0|0|0|0|0|0|0|1|0|0\n"
@@ -189,6 +191,89 @@ class TestDataIO(unittest.TestCase):
 
         # Check if the data is saved correctly
         self.assertTrue(np.array_equal(np.load(model_file_path), arr))
+    
+    def test_save_training_result(self):
+        """Test saving training result with all components."""
+        # Create mock training result data
+        user_weights = np.random.rand(10, 5)
+        item_weights = np.random.rand(20, 5)
+        user_metadata_weights = np.random.rand(10, 3)
+        item_metadata_weights = np.random.rand(20, 4)
+        user_bias = np.random.rand(10)
+        item_bias = np.random.rand(20)
+        
+        training_result = TrainingResult(
+            parameters={'n_iter': 100, 'latent_factors': 5, 'regularization': 0.01},
+            user_weights=user_weights,
+            item_weights=item_weights,
+            user_metadata_weights=user_metadata_weights,
+            item_metadata_weights=item_metadata_weights,
+            user_bias=user_bias,
+            item_bias=item_bias,
+            user_index_map={1: 0, 2: 1, 3: 2},
+            product_index_map={101: 0, 102: 1, 103: 2},
+            global_mean=3.5,
+            final_loss=0.245
+        )
+        
+        # Save the training result
+        self.data_io.save_training_result(training_result)
+        
+        # Check that the directory structure is created
+        # The directory name format is YYYYMMDD_XX where XX is a 2-char random string
+        directories = [d for d in os.listdir(self.test_data_dir) if os.path.isdir(os.path.join(self.test_data_dir, d))]
+        self.assertEqual(len(directories), 1)
+        
+        result_dir = os.path.join(self.test_data_dir, directories[0])
+        
+        # Check that all expected files exist
+        expected_files = [
+            'metadata.json',
+            'user_weights.npy',
+            'item_weights.npy',
+            'user_bias.npy',
+            'item_bias.npy',
+            'user_metadata_weights.npy',
+            'item_metadata_weights.npy'
+        ]
+        
+        for filename in expected_files:
+            file_path = os.path.join(result_dir, filename)
+            self.assertTrue(os.path.exists(file_path), f"File {filename} should exist")
+        
+        # Verify metadata.json content
+        metadata_path = os.path.join(result_dir, 'metadata.json')
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+        
+        self.assertIn('train_id', metadata)
+        self.assertEqual(len(metadata['train_id']), 2)  # 2-character random string
+        self.assertEqual(metadata['parameters'], training_result.parameters)
+        # JSON converts integer keys to strings, so we need to convert them back for comparison
+        expected_user_index_map = {str(k): v for k, v in training_result.user_index_map.items()}
+        expected_product_index_map = {str(k): v for k, v in training_result.product_index_map.items()}
+        self.assertEqual(metadata['user_index_map'], expected_user_index_map)
+        self.assertEqual(metadata['product_index_map'], expected_product_index_map)
+        self.assertEqual(metadata['global_mean'], training_result.global_mean)
+        self.assertEqual(metadata['final_loss'], training_result.final_loss)
+        
+        # Verify numpy arrays are saved correctly
+        loaded_user_weights = np.load(os.path.join(result_dir, 'user_weights.npy'))
+        loaded_item_weights = np.load(os.path.join(result_dir, 'item_weights.npy'))
+        loaded_user_bias = np.load(os.path.join(result_dir, 'user_bias.npy'))
+        loaded_item_bias = np.load(os.path.join(result_dir, 'item_bias.npy'))
+        loaded_user_metadata_weights = np.load(os.path.join(result_dir, 'user_metadata_weights.npy'))
+        loaded_item_metadata_weights = np.load(os.path.join(result_dir, 'item_metadata_weights.npy'))
+        
+        np.testing.assert_array_equal(loaded_user_weights, user_weights)
+        np.testing.assert_array_equal(loaded_item_weights, item_weights)
+        np.testing.assert_array_equal(loaded_user_bias, user_bias)
+        np.testing.assert_array_equal(loaded_item_bias, item_bias)
+        np.testing.assert_array_equal(loaded_user_metadata_weights, user_metadata_weights)
+        np.testing.assert_array_equal(loaded_item_metadata_weights, item_metadata_weights)
+        
+        # Clean up: remove the created directory
+        shutil.rmtree(result_dir)
     
     def test_scalability_10_to_10000_rows(self):
         """Test that if it can read 10 rows, it can read 10000 rows."""

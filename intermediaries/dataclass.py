@@ -52,6 +52,8 @@ class TrainingResult:
     parameters: Dict[str, Any]
     user_weights: NDArray[np.float64]
     item_weights: NDArray[np.float64]
+    user_metadata_weights: NDArray[np.float64]
+    item_metadata_weights: NDArray[np.float64]
     user_bias: NDArray[np.float64]
     item_bias: NDArray[np.float64]
     user_index_map: Dict[int, int]
