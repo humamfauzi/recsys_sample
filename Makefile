@@ -1,6 +1,6 @@
 # Recommendation System Makefile
 
-.PHONY: help train serve test clean install build-train build-serve
+.PHONY: help train serve test clean install build-train build-serve run-train
 
 # Default target
 help:
