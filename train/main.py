@@ -122,7 +122,7 @@ class RecommendationSystemTrainer:
         
         print("Step 5: Saving model...")
         self.data_io.save_training_result(best_result)
-        print(json.dumps(prime_collector, indent=2, default=str))
+        # print(json.dumps(prime_collector, indent=2, default=str))
         return best_result
 
 

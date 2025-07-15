@@ -60,3 +60,6 @@ htmlcov/
 
 # dataset
 dataset/
+
+# scripts
+debug_*

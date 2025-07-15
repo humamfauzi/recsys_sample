@@ -653,3 +653,44 @@ class TestALSModel(unittest.TestCase):
         # (This is a weak test since random initialization might dominate with few iterations)
         self.assertTrue(np.any(np.abs(result1.user_metadata_weights) > 0.001))
         self.assertTrue(np.any(np.abs(result1.item_metadata_weights) > 0.001))
+    
+
+class TestALSMethods(unittest.TestCase):
+    """Test cases for ALS methods."""
+    
+    def setUp(self):
+        self.base_model = ALSModel(n_iter=5, latent_factors=3, regularization=0.1)
+        """Set up test fixtures for ALS methods."""
+    
+    def test_predict_method(self):
+        """Test the predict method of ALSModel."""
+        training_data = np.array([
+            [0, 0, 4.0, 1, 0, 0, 1, 0],
+            [0, 1, 3.0, 1, 0, 0, 0, 1],
+            [1, 0, 5.0, 0, 1, 0, 1, 0],
+            [1, 2, 2.0, 0, 1, 0, 0, 0],
+        ])
+        empty_training_data = np.empty((0, 8))
+        with self.assertRaises(ValueError):
+            self.base_model.select_intersect(empty_training_data, 1, 1)
+
+        wrong_type_training_data = np.array([
+            [0, 0, '4.0', 1, 0, 0, 1, 0],
+            [0, 1, '3.0', 1, 0, 0, 0, 1],
+        ])
+        with self.assertRaises(TypeError):
+            self.base_model.select_intersect(wrong_type_training_data, '1', 1)
+
+        with self.assertRaises(IndexError):
+            self.base_model.select_intersect(training_data, 1, 10)
+
+        result = self.base_model.select_intersect(training_data, 1, 0)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(result.shape, (2, 8))
+        self.assertEqual(result[0, 0], 1)  # User ID
+        self.assertEqual(result[1, 0], 1)  # User ID
+        self.assertEqual(result[0, 1], 0)
+        self.assertEqual(result[1, 1], 2)
+        self.assertEqual(result[0, 2], 5.0)
+        self.assertEqual(result[1, 2], 2.0)
+
