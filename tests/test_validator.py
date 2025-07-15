@@ -4,6 +4,8 @@ Test cases for train/validator.py module.
 
 import unittest
 import numpy as np
+import sys
+from io import StringIO
 from train.validator import DataValidator
 from intermediaries.dataclass import BaseData
 
@@ -13,6 +15,8 @@ class TestDataValidator(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
+        self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
+        self.held_err, sys.stderr = sys.stderr, StringIO()  # Suppress stderr
         users = np.array([[1, 'User1'], [2, 'User2']])
         products = np.array([[1, 'Product1', '2024-01-23'], [2, 'Product2', '2024-01-24'], [3, 'Product3', '']])
 
@@ -25,6 +29,11 @@ class TestDataValidator(unittest.TestCase):
         self.validator_failed_user = DataValidator(BaseData(rating=ratings_failed_user, user=users, product=products))
         self.validator_failed_product = DataValidator(BaseData(rating=ratings_failed_product, user=users, product=products))
         self.validator_null_ratings = DataValidator(BaseData(rating=ratings_null, user=users, product=products))
+
+    def tearDown(self):
+        """Clean up after tests."""
+        sys.stdout = self.held_out
+        sys.stderr = self.held_err
 
     def test_validate_users_exist_in_ratings(self):
         """Test validation of users existence in ratings."""

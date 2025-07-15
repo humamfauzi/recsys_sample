@@ -10,6 +10,7 @@ import os
 import json
 import sys
 from unittest.mock import Mock, MagicMock, patch
+from io import StringIO
 from pathlib import Path
 
 from intermediaries.dataclass import BaseData, ProcessedTrainingData, TrainingResult, ALSHyperParameters, RangeIndex, Folds
@@ -20,6 +21,9 @@ class TestRecommendationSystemTrainer(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
+        self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
+        self.held_err, sys.stderr = sys.stderr, StringIO()  # Suppress stderr
+
         
         # Create temporary directory for test data
         self.temp_dir = tempfile.mkdtemp()
@@ -103,6 +107,8 @@ class TestRecommendationSystemTrainer(unittest.TestCase):
         """Clean up test fixtures."""
         # Clean up temporary directory
         import shutil
+        sys.stdout = self.held_out  # Restore stdout
+        sys.stderr = self.held_err  # Restore stderr
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     @patch('train.main.DataIO')
@@ -296,6 +302,8 @@ class TestMainFunction(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
+        self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
+        self.held_err, sys.stderr = sys.stderr, StringIO()  # Suppress stderr
         mock_args = Mock()
         mock_args.data_path = 'test_dataset'
         mock_args.test_ratio = 0.2
@@ -304,8 +312,12 @@ class TestMainFunction(unittest.TestCase):
         mock_args.latent_factors = [5, 10]
         mock_args.regularization = [0.01, 0.1]
         self.mock_args = mock_args
-        pass
     
+    def tearDown(self):
+        """Clean up test fixtures."""
+        sys.stdout = self.held_out  # Restore stdout
+        sys.stderr = self.held_err  # Restore stderr
+
     @patch('train.main.RecommendationSystemTrainer')
     @patch('train.main.parse_arguments')
     def test_main_function_success(self, mock_parse_args, mock_trainer_class):
@@ -383,6 +395,8 @@ class TestIntegrationWithMockData(unittest.TestCase):
         """Set up test fixtures with actual files."""
         
         # Create temporary directory and mock data files
+        self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
+        self.held_err, sys.stderr = sys.stderr, StringIO() # Suppress stderr
         self.temp_dir = tempfile.mkdtemp()
         
         # Create mock user file
@@ -406,6 +420,8 @@ class TestIntegrationWithMockData(unittest.TestCase):
         """Clean up test fixtures."""
         # Clean up temporary directory
         import shutil
+        sys.stdout = self.held_out
+        sys.stderr = self.held_err
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def test_integration_with_mock_data_files(self):

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from numpy.typing import NDArray
 
 @dataclass
@@ -59,4 +59,4 @@ class TrainingResult:
     user_index_map: Dict[int, int]
     product_index_map: Dict[int, int]
     global_mean: float
-    final_loss: float
+    final_loss: Optional[float]

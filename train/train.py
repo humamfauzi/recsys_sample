@@ -99,6 +99,7 @@ class ALSModel:
                 # where $V_\omega_i$ (n_interacted_item, n_latent_factor) is the latent weights for items that user $i interacted with
                 # where $W_g$ (n_interacted_item, n_metadata_item, n_latent_factor) is the metadata weights for items that user $i$ interacted with
                 # where $G_\omega_i$ (n_interacted_item, n_metadata_item) is the metadata value for items that user $i$ interacted with
+                # use einstein summation to calculate the dot product of metadata weights and metadata values; where k represented the metadata feature index
                 latent_medatadata = item_latent_weights[unique_items_idx] + np.einsum("ijk,ik->ij", item_metadata_weights[unique_items_idx], user_data[:, product_metadata_range])
                 latent_matrix_items = np.matmul(latent_medatadata.T, latent_medatadata) + self.regularization * np.eye(self.latent_factors)
                 # accumulate the residual based
@@ -134,7 +135,8 @@ class ALSModel:
                 item_data = self.select_intersect(training_data, item_id, 1)
                 unique_users = np.unique(item_data[:, 0]).astype(int)
                 unique_users_idx = [self.user_idx_map[user_id] for user_id in unique_users]
-                latent_matrix_users = np.matmul(user_latent_weights[unique_users_idx].T, user_latent_weights[unique_users_idx]) + self.regularization * np.eye(self.latent_factors) 
+                latent_metadata = user_latent_weights[unique_users_idx] + np.einsum("ijk,ik->ij", user_metadata_weights[unique_users_idx], item_data[:, user_metadata_range])
+                latent_matrix_users = np.matmul(latent_metadata.T, latent_metadata) + self.regularization * np.eye(self.latent_factors) 
 
                 bias_acc = 0
                 vector_acc = np.zeros((self.latent_factors,))
@@ -170,27 +172,29 @@ class ALSModel:
 
 
             if iteration % 100 == 0:
-                current_loss = -1
+                tr = TrainingResult(
+                    parameters={
+                        'n_iter': self.n_iter,
+                        'latent_factors': self.latent_factors,
+                        'regularization': self.regularization,
+                        'eta': self.eta
+                    },
+                    user_weights=user_latent_weights,
+                    item_weights=item_latent_weights,
+                    user_metadata_weights=user_metadata_weights,
+                    item_metadata_weights=item_metadata_weights,
+                    user_bias=user_bias,
+                    item_bias=item_bias,
+                    user_index_map=self.user_idx_map,
+                    product_index_map=self.product_idx_map,
+                    global_mean=global_mean,
+                    final_loss=None
+                )
+                current_loss = self.calculate_loss(tr, training_data)  
                 print(f"Iteration: {iteration}, Loss: {current_loss}")
                 self.loss_iter_pair.append((iteration, current_loss))
-        return TrainingResult(
-            parameters={
-                'n_iter': self.n_iter,
-                'latent_factors': self.latent_factors,
-                'regularization': self.regularization,
-                'eta': self.eta
-            },
-            user_weights=user_latent_weights,
-            item_weights=item_latent_weights,
-            user_metadata_weights=user_metadata_weights,
-            item_metadata_weights=item_metadata_weights,
-            user_bias=user_bias,
-            item_bias=item_bias,
-            user_index_map=self.user_idx_map,
-            product_index_map=self.product_idx_map,
-            global_mean=global_mean,
-            final_loss=self.loss_iter_pair[-1][1]
-        )
+                tr.final_loss = current_loss
+        return tr
 
     def predict_order(self, training_result: TrainingResult, user_id: int, product_index_map: Dict[int, int]) -> List[int]:
         rank = []
@@ -199,6 +203,16 @@ class ALSModel:
             rank.append([product_key_id, result])
         rank.sort(key=lambda x: x[1], reverse=True)
         return [item[0] for item in rank]
+
+    def calculate_loss(self, training_result: TrainingResult, training_data: NDArray[np.float64]) -> float:
+        """Calculate the loss for the training data."""
+        total_loss = 0.0
+        for row in training_data:
+            user_id, product_id, actual_rating = int(row[0]), int(row[1]), row[2]
+            prediction = self.predict(training_result, user_id, product_id)
+            residual = actual_rating - prediction
+            total_loss += residual ** 2
+        return total_loss / len(training_data)
 
     def predict(self, training_result: TrainingResult, user_id: int, product_id: int) -> float:
         """Make a prediction for a given user and product."""
@@ -426,36 +440,6 @@ class ALSModel:
             
         return grad_user_metadata, grad_prod_metadata
 
-    def find_best_parameters(self, preprocessed_data: ProcessedTrainingData) -> TrainingResult:
-        """Find best parameters using cross-validation."""
-        possible_parameter = self.hp.to_dict()
-        param_combinations = itertools.product(*possible_parameter.values())
-        test_results = []
-        training_results = []
-        
-        for pc in param_combinations:
-            fold_indices_pick: Folds = np.random.choice(preprocessed_data.fold_indices, replace=False)
-            params = dict(zip(possible_parameter.keys(), pc))
-            model = ALSModel(**params)
-            tdata, vdata = self.get_data_from_indices(preprocessed_data.training_data, fold_indices_pick.train_index, fold_indices_pick.test_index)
-            tr = model.fit(tdata, preprocessed_data.user_metadata_range, preprocessed_data.product_metadata_range)
-            training_results.append(tr)
-            
-            # Get a sample user for ranking
-            user_id = int(vdata[0, 0])  # Use first user in validation set
-            rank_list = model.predict_order(tr, user_id, tr.product_index_map)
-            
-            # Get actual ratings for this user
-            user_ratings = vdata[vdata[:, 0] == user_id]
-            sorted_ratings = user_ratings[user_ratings[:, 2].argsort()[::-1]]  # Sort by rating descending
-            actual_order = sorted_ratings[:, 1].astype(int).tolist()  # Get item IDs in rating order
-            
-            # Calculate ranking distance
-            dist = np.sum([0 if a == b else 1 for a, b in zip(rank_list, actual_order)])
-            test_results.append([tr, dist])
-            
-        best_result = min(test_results, key=lambda x: x[1])
-        return best_result[0]
 
     def select_intersect(self, training_data: NDArray[np.float64], idd: int, column_select:int) -> NDArray[np.float64]:
         """
@@ -506,6 +490,37 @@ class Trainer:
     def __init__(self, hp: ALSHyperParameters):
         """Initialize the trainer with an ALS model."""
         self.hp = hp
+
+    def find_best_parameters(self, preprocessed_data: ProcessedTrainingData) -> TrainingResult:
+        """Find best parameters using cross-validation."""
+        possible_parameter = self.hp.to_dict()
+        param_combinations = itertools.product(*possible_parameter.values())
+        test_results = []
+        training_results = []
+        
+        for pc in param_combinations:
+            fold_indices_pick: Folds = np.random.choice(preprocessed_data.fold_indices, replace=False)
+            params = dict(zip(possible_parameter.keys(), pc))
+            model = ALSModel(**params)
+            tdata, vdata = self.get_data_from_indices(preprocessed_data.training_data, fold_indices_pick.train_index, fold_indices_pick.test_index)
+            tr = model.fit(tdata, preprocessed_data.user_metadata_range, preprocessed_data.product_metadata_range)
+            training_results.append(tr)
+            
+            # Get a sample user for ranking
+            user_id = int(vdata[0, 0])  # Use first user in validation set
+            rank_list = model.predict_order(tr, user_id, tr.product_index_map)
+            
+            # Get actual ratings for this user
+            user_ratings = vdata[vdata[:, 0] == user_id]
+            sorted_ratings = user_ratings[user_ratings[:, 2].argsort()[::-1]]  # Sort by rating descending
+            actual_order = sorted_ratings[:, 1].astype(int).tolist()  # Get item IDs in rating order
+            
+            # Calculate ranking distance
+            dist = np.sum([0 if a == b else 1 for a, b in zip(rank_list, actual_order)])
+            test_results.append([tr, dist])
+            
+        best_result = min(test_results, key=lambda x: x[1])
+        return best_result[0]
 
     def get_data_from_indices(self, base_data, train_indices: List[RangeIndex], test_indices: RangeIndex):
         if not isinstance(train_indices, list):

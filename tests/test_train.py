@@ -2,6 +2,8 @@
 Test cases for train/train.py module.
 """
 
+import sys
+from io import StringIO
 import unittest
 import numpy as np
 from intermediaries.dataclass import ProcessedTrainingData, ALSHyperParameters, Folds, RangeIndex
@@ -13,6 +15,8 @@ class TestTrainer(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
+        self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
+        self.held_err, sys.stderr = sys.stderr, StringIO()  # Suppress stderr
             
         self.hyperparameters = ALSHyperParameters(
             n_iter=[5, 10],
@@ -51,6 +55,11 @@ class TestTrainer(unittest.TestCase):
             user_metadata_range=range(3, 6),
             product_metadata_range=range(6, 8)
         )
+
+    def tearDown(self):
+        """Clean up after tests."""
+        sys.stdout = self.held_out
+        sys.stderr = self.held_err
     
     def test_trainer_initialization(self):
         """Test trainer initialization with hyperparameters."""
@@ -369,6 +378,8 @@ class TestALSModel(unittest.TestCase):
     """Test cases for ALS model implementation."""
     
     def setUp(self):
+        self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
+        self.held_err, sys.stderr = sys.stderr, StringIO()  # Suppress stderr
         """Set up test fixtures for ALS model testing."""
         # Create comprehensive test data with user_id, product_id, rating, user_metadata, product_metadata
         # Format: [user_id, product_id, rating, user_age, user_gender, user_occupation, genre_action, genre_comedy]
@@ -392,7 +403,12 @@ class TestALSModel(unittest.TestCase):
         self.als_model = ALSModel(n_iter=5, latent_factors=3, regularization=0.1)
         self.als_model_single_iter = ALSModel(n_iter=1, latent_factors=3, regularization=0.1)
         self.als_model_no_reg = ALSModel(n_iter=5, latent_factors=3, regularization=0.0)
-        self.als_model_convergence = ALSModel(n_iter=50, latent_factors=5, regularization=0.01, eta=0.001)
+        self.als_model_convergence = ALSModel(n_iter=500, latent_factors=5, regularization=0.01, eta=0.001)
+    
+    def tearDown(self):
+        """Clean up after tests."""
+        sys.stdout = self.held_out
+        sys.stderr = self.held_err
     
     def test_als_model_initialization(self):
         """Test ALS model initialization with proper parameters."""
@@ -489,13 +505,13 @@ class TestALSModel(unittest.TestCase):
         )
         
         # Check that loss_iter_pair has correct length
-        self.assertEqual(len(self.als_model_convergence.loss_iter_pair), 50)
+        self.assertEqual(len(self.als_model_convergence.loss_iter_pair), 5)
         
         # Extract losses for convergence analysis
         losses = [loss for iteration, loss in self.als_model_convergence.loss_iter_pair]
         
         # Check that we have the expected number of loss values
-        self.assertEqual(len(losses), 50)
+        self.assertEqual(len(losses), 5)
         
         # Check that all losses are finite numbers
         for loss in losses:
@@ -505,9 +521,9 @@ class TestALSModel(unittest.TestCase):
         
         # Check that the loss generally decreases or stabilizes (allowing for some fluctuation)
         # We'll check if the loss in the last 10 iterations is generally lower than the first 10
-        early_losses = np.mean(losses[:10])
-        late_losses = np.mean(losses[-10:])
-        
+        early_losses = np.mean(losses[:2])
+        late_losses = np.mean(losses[-2:])
+
         # The loss should either decrease or not increase significantly
         self.assertLessEqual(late_losses, early_losses * 2.0)  # Allow more tolerance for metadata learning
         

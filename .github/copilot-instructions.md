@@ -42,8 +42,12 @@ all file, `model.py` and `io.py` should have test unit.
 this contain the definition, enums, and class that can be used by both train and serve. If there is a similar class that required in both, then move it to intermediaries and let serve and train require from intermediaries.
 
 # other files
-We add gitignore to not commit dataset and models
-We add makefile so we can save command to train and serve. It also contain command to compile both train and serve into a binary
+- We add gitignore to not commit dataset and models
+- We add makefile so we can save command to train and serve. It also contain command to compile both train and serve into a binary
+- All makefile command should be included in PHONY
+
+# test
+In testing use `unittest` framework. All test should be in `tests/` folder. The test should be able to run independently.
 
 # reference
 https://cookiecutter-data-science.drivendata.org/
