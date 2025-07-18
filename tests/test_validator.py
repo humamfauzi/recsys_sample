@@ -63,7 +63,6 @@ class TestDataValidator(unittest.TestCase):
     
     def test_validate_all(self):
         """Test complete validation pipeline."""
-        # Test implementation will go here
         with self.assertRaises(ValueError):
             self.validator_failed_user.validate_all()
         with self.assertRaises(ValueError):

@@ -169,16 +169,16 @@ class TestDataIO(unittest.TestCase):
         self.assertEqual(ratings.shape[1], 4)
 
         first_rating = ratings[0]
-        self.assertEqual(first_rating[0], '196')  # user_id
-        self.assertEqual(first_rating[1], '242')  # product_id
-        self.assertEqual(first_rating[2], '3')    # rating
-        self.assertEqual(first_rating[3], '881250949')  # timestamp
+        self.assertEqual(first_rating[0], 196.0)  # user_id
+        self.assertEqual(first_rating[1], 242.0)  # product_id
+        self.assertEqual(first_rating[2], 3.0)    # rating
+        self.assertEqual(first_rating[3], 881250949.0)  # timestamp
 
         last_rating = ratings[-1]
-        self.assertEqual(last_rating[0], '298')  # user_id
-        self.assertEqual(last_rating[1], '474')  # product_id
-        self.assertEqual(last_rating[2], '4')    # rating
-        self.assertEqual(last_rating[3], '884182806')  # timestamp
+        self.assertEqual(last_rating[0], 298.0)  # user_id
+        self.assertEqual(last_rating[1], 474.0)  # product_id
+        self.assertEqual(last_rating[2], 4.0)    # rating
+        self.assertEqual(last_rating[3], 884182806.0)  # timestamp
 
     def test_save_model(self):
         """Test saving model data."""

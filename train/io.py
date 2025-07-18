@@ -57,7 +57,7 @@ class DataIO(DataIOInterface):
         with open(ratings_file_path, 'r') as file:
             data = file.read().strip().split('\n')
             splitted = [line.split('\t') for line in data]
-            return np.array(splitted)
+            return np.array(splitted).astype(np.float64)
 
     def read_all(self) -> BaseData:
         """Read all data (users, products, ratings) and return as a BaseData instance."""

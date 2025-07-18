@@ -4,6 +4,7 @@ Tests the complete training pipeline integration.
 """
 
 import unittest
+import traceback
 import numpy as np
 import tempfile
 import os
@@ -269,7 +270,7 @@ class TestParseArguments(unittest.TestCase):
     """Test cases for argument parsing."""
     
     def setUp(self):
-        """Set up test fixtures."""
+        # """Set up test fixtures."""
         pass
     
     @patch('sys.argv', ['main.py'])
@@ -395,8 +396,8 @@ class TestIntegrationWithMockData(unittest.TestCase):
         """Set up test fixtures with actual files."""
         
         # Create temporary directory and mock data files
-        self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
-        self.held_err, sys.stderr = sys.stderr, StringIO() # Suppress stderr
+        # self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
+        # self.held_err, sys.stderr = sys.stderr, StringIO() # Suppress stderr
         self.temp_dir = tempfile.mkdtemp()
         
         # Create mock user file
@@ -408,10 +409,10 @@ class TestIntegrationWithMockData(unittest.TestCase):
         product_data = "1|Movie1|01-Jan-1995|01-Jun-1995|http://imdb.com/1|0|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0\n" + \
                       "2|Movie2|01-Jan-1996|01-Jun-1996|http://imdb.com/2|0|0|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0\n" + \
                       "3|Movie3|01-Jan-1997|01-Jun-1997|http://imdb.com/3|0|0|0|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0"
-        with open(os.path.join(self.temp_dir, 'product'), 'w') as f:
+        with open(os.path.join(self.temp_dir, 'item'), 'w') as f:
             f.write(product_data)
         
-        # Create mock rating file
+        # Create mock rating file; for some reason the data is tab-separated
         rating_data = "1\t1\t4\t12345\n1\t2\t3\t12346\n2\t1\t5\t12347\n2\t3\t2\t12348\n3\t2\t4\t12349\n3\t3\t1\t12350"
         with open(os.path.join(self.temp_dir, 'rating'), 'w') as f:
             f.write(rating_data)
@@ -420,8 +421,8 @@ class TestIntegrationWithMockData(unittest.TestCase):
         """Clean up test fixtures."""
         # Clean up temporary directory
         import shutil
-        sys.stdout = self.held_out
-        sys.stderr = self.held_err
+        # sys.stdout = self.held_out
+        # sys.stderr = self.held_err
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def test_integration_with_mock_data_files(self):
@@ -450,6 +451,9 @@ class TestIntegrationWithMockData(unittest.TestCase):
             
         except Exception as e:
             # If integration fails, we can skip this test or log the issue
+            print(f"Integration test failed: {str(e)}")
+            print("Stack trace:")
+            traceback.print_exc()
             self.skipTest(f"Integration test failed due to implementation issues: {str(e)}")
 
 

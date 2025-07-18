@@ -27,7 +27,7 @@ serve:
 
 # Run all tests
 test:
-	python3 -m unittest discover tests
+	python3 -m unittest discover tests -v
 
 run-train:
 	python -m train.main

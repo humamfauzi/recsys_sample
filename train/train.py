@@ -474,6 +474,7 @@ class ALSModel:
 
         if training_data.size == 0:
             raise ValueError("Training data is empty.")
+        print(f"Training data shape: {type(training_data)}, {training_data.dtype}")
         if not isinstance(training_data, np.ndarray) or training_data.dtype != np.float64:
             raise TypeError("Training data must be a numpy array of float64 type.")
         if column_select < 0 or column_select >= training_data.shape[1]:
