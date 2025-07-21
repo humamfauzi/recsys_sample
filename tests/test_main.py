@@ -396,8 +396,8 @@ class TestIntegrationWithMockData(unittest.TestCase):
         """Set up test fixtures with actual files."""
         
         # Create temporary directory and mock data files
-        # self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
-        # self.held_err, sys.stderr = sys.stderr, StringIO() # Suppress stderr
+        self.held_out, sys.stdout = sys.stdout, StringIO()  # Suppress stdout
+        self.held_err, sys.stderr = sys.stderr, StringIO() # Suppress stderr
         self.temp_dir = tempfile.mkdtemp()
         
         # Create mock user file
@@ -421,8 +421,8 @@ class TestIntegrationWithMockData(unittest.TestCase):
         """Clean up test fixtures."""
         # Clean up temporary directory
         import shutil
-        # sys.stdout = self.held_out
-        # sys.stderr = self.held_err
+        sys.stdout = self.held_out
+        sys.stderr = self.held_err
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def test_integration_with_mock_data_files(self):
@@ -450,11 +450,9 @@ class TestIntegrationWithMockData(unittest.TestCase):
             self.assertIsInstance(result.final_loss, float)
             
         except Exception as e:
-            # If integration fails, we can skip this test or log the issue
-            print(f"Integration test failed: {str(e)}")
-            print("Stack trace:")
+            # Print traceback for debugging and fail the test
             traceback.print_exc()
-            self.skipTest(f"Integration test failed due to implementation issues: {str(e)}")
+            self.fail(f"Integration test failed: {str(e)}")
 
 
 if __name__ == '__main__':

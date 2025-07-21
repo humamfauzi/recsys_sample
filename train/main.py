@@ -18,9 +18,17 @@ from train.io import DataIO
 from train.validator import DataValidator
 from train.pre import DataPreprocessorMovieLens
 from train.train import Trainer
-from intermediaries.dataclass import ALSHyperParameters, TrainingResult
+from intermediaries.dataclass import ALSHyperParameters, TrainingResult, dummy_training_result
 import time
 import traceback
+
+np.set_printoptions(
+    precision=2,        # Number of decimal places
+    suppress=True,      # Suppress scientific notation
+    linewidth=100,      # Characters per line
+    formatter={'float': '{:6.2f}'.format}  # Custom formatting
+)
+
 
 
 class RecommendationSystemTrainer:
@@ -59,9 +67,9 @@ class RecommendationSystemTrainer:
         
         # Set default hyperparameters if not provided
         if n_iter is None:
-            n_iter = [10000]
+            n_iter = [5] # Default to 5 iterations for simplicity
         if latent_factors is None:
-            latent_factors = [10]
+            latent_factors = [3]
         if regularization is None:
             regularization = [0.01]
         
@@ -95,7 +103,6 @@ class RecommendationSystemTrainer:
             "product_metadata_range": processed_data.product_metadata_range,
             "fold_count": len(processed_data.fold_indices)
         }
-        
         print("Step 4: Training model...")
         # Create hyperparameters and train using Trainer
         hyperparameters = ALSHyperParameters(
@@ -122,9 +129,7 @@ class RecommendationSystemTrainer:
         
         print("Step 5: Saving model...")
         self.data_io.save_training_result(best_result)
-        # print(json.dumps(prime_collector, indent=2, default=str))
         return best_result
-
 
 def parse_arguments():
     """Parse command line arguments for training configuration."""

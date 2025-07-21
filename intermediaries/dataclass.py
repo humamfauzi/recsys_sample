@@ -60,3 +60,19 @@ class TrainingResult:
     product_index_map: Dict[int, int]
     global_mean: float
     final_loss: Optional[float]
+
+def dummy_training_result() -> TrainingResult:
+    """Create a dummy TrainingResult for testing purposes."""
+    return TrainingResult(
+        parameters={},
+        user_weights=np.array([]),
+        item_weights=np.array([]),
+        user_metadata_weights=np.array([]),
+        item_metadata_weights=np.array([]),
+        user_bias=np.array([]),
+        item_bias=np.array([]),
+        user_index_map={},
+        product_index_map={},
+        global_mean=0.0,
+        final_loss=None
+    )   

@@ -106,8 +106,9 @@ class DataPreprocessorMovieLens(DataProcessorInterface):
         rating_data = np.delete(basedata.rating, [-1], axis=1).astype(int)
 
         merged_columns = rating_data.shape[1] + encoded_user_data.shape[1] + encoded_product_data.shape[1]
-        user_metadata_range = range(rating_data.shape[1], rating_data.shape[1] + encoded_user_data.shape[1])
-        product_metadata_range = range(rating_data.shape[1] + encoded_user_data.shape[1], merged_columns)
+        # add plus one in both metadata range to avoid picking id. We still need to keep the id for filtering purposes
+        user_metadata_range = range(rating_data.shape[1] + 1, rating_data.shape[1] + encoded_user_data.shape[1])
+        product_metadata_range = range(rating_data.shape[1] + encoded_user_data.shape[1] + 1, merged_columns)
         merged = np.zeros((rating_data.shape[0], merged_columns), dtype=int)
 
         for i in range(rating_data.shape[0]):
@@ -132,7 +133,7 @@ class DataPreprocessorMovieLens(DataProcessorInterface):
         split_index = int(len(data) * (1 - test_ratio))
         training_data = data[:split_index]
         test_data = data[split_index:]
-        return training_data, test_data
+        return training_data.astype(float), test_data.astype(float)
     
     def shuffle_create_folds(self, training_data: np.ndarray, n_folds: int) -> List[np.ndarray]:
         """Separate training data into folds with randomization."""
