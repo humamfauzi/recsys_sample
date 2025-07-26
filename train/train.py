@@ -3,6 +3,7 @@ Training module containing ALS implementation and training pipeline.
 """
 
 import numpy as np
+import time
 from numpy.typing import NDArray
 from dataclasses import dataclass
 from typing import Dict, Any, Tuple, List
@@ -78,8 +79,8 @@ class ALSModel:
         self.loss_iter_pair = []
 
         # total loops for fitting calculation should be number of iteration times number of training data rows
-        print(">>>>", self.n_iter)
         for iteration in range(self.n_iter):
+            start = time.time()
             buffer_user_latent_weights, buffer_item_latent_weights, buffer_user_bias, buffer_item_bias = self.initialize_weights_and_bias(n_users, n_items)
             # Step 1: Update the latent and bias for users; making the product fixed
             # this should filter all training data to highlighted user
@@ -126,7 +127,9 @@ class ALSModel:
                     mm = np.dot(np.matmul(user_metadata_weights[user_idx], row[user_metadata_range]), item_fixed)
                     residual = row[2] - global_mean - item_bias[item_idx] - user_bias[user_idx] - mm
                     vector_acc += residual * item_fixed
-                    bias_acc += row[2] - global_mean - item_bias[item_idx] - user_bias[user_idx] - mm
+                    item_latent_and_metadata = item_latent_weights[item_idx] + np.matmul(item_metadata_weights[item_idx], row[product_metadata_range])
+                    user_latent_and_metadata = user_latent_weights[user_idx] + np.matmul(user_metadata_weights[user_idx], row[user_metadata_range])
+                    bias_acc += row[2] - global_mean - item_bias[item_idx] - np.dot(item_latent_and_metadata, user_latent_and_metadata)
                 # solve the linear equation to get the new user latent weights
                 # this is the equation $A_u x_u = B_u$
                 # the shape should be (1, latent_factors) = (latent_factors, latent_factors) * (1, latent_factors)
@@ -134,7 +137,7 @@ class ALSModel:
                 buffer_user_latent_weights[user_idx] = solve / (np.linalg.norm(solve) + self.regularization)
                 if np.mean(buffer_user_latent_weights[user_idx]) > 10:
                     print(f"user_idx: {user_idx}, solution {buffer_user_latent_weights[user_idx]}, matrix: {latent_matrix_items} vector_acc: {vector_acc}")
-                buffer_user_bias[user_idx] = np.abs(actual_rating - prediction) / (len(unique_items) + self.regularization)
+                buffer_user_bias[user_idx] = bias_acc / (len(unique_items) + self.regularization)
 
             # Step 2: Update the latent and bias for items; making the user fixed
             # this would take the whole training set 
@@ -155,7 +158,9 @@ class ALSModel:
                     mm = np.dot(np.matmul(item_metadata_weights[item_idx], row[product_metadata_range]), user_fixed)
                     residual = row[2] - global_mean - item_bias[item_idx] - user_bias[user_idx] - mm
                     vector_acc += residual * user_fixed
-                    bias_acc += row[2] - global_mean - item_bias[item_idx] - user_bias[user_idx] - mm
+                    item_latent_and_metadata = item_latent_weights[item_idx] + np.matmul(item_metadata_weights[item_idx], row[product_metadata_range])
+                    user_latent_and_metadata = user_latent_weights[user_idx] + np.matmul(user_metadata_weights[user_idx], row[user_metadata_range])
+                    bias_acc += row[2] - global_mean - user_bias[user_idx] - np.dot(item_latent_and_metadata, user_latent_and_metadata)
 
                 solve = np.linalg.solve(latent_matrix_users, vector_acc)
                 buffer_item_latent_weights[item_idx] = solve / (np.linalg.norm(solve) + self.regularization)
@@ -212,8 +217,8 @@ class ALSModel:
                     global_mean=global_mean,
                     final_loss=None
                 )
-                current_loss = self.calculate_loss(tr, training_data, user_metadata_range, product_metadata_range)  
-                print(f"Iteration: {iteration}, Loss: {current_loss}")
+                current_loss, diff, reg = self.calculate_loss(tr, training_data, user_metadata_range, product_metadata_range)  
+                print(f"Iteration: {iteration}, Loss: {current_loss}, Diff: {diff}, Reg: {reg}, Time: {time.time() - start:.2f}s")
                 self.loss_iter_pair.append((iteration, current_loss))
                 tr.final_loss = current_loss
         return tr
@@ -231,8 +236,6 @@ class ALSModel:
         total_loss = 0.0
         for row in training_data:
             user_id, product_id, actual_rating =  self.user_idx_map[int(row[0])], self.product_idx_map[int(row[1])], row[2]
-            # prediction = self.predict(training_result, user_id, product_id)
-            # residual = actual_rating - prediction
             user_latent = training_result.user_weights[user_id] + np.dot(training_result.user_metadata_weights[user_id], row[user_metadata_range])
             item_latent = training_result.item_weights[product_id] + np.dot(training_result.item_metadata_weights[product_id], row[product_metadata_range])
             user_b = training_result.user_bias[user_id]
@@ -243,8 +246,23 @@ class ALSModel:
             if np.abs(actual_rating - prediction) < 0. or np.abs(actual_rating - prediction) > 5.0:  # Print only 10% of the time
                 print(f"latent: {user_latent} {item_latent}")
                 print(f"User ID: {user_id}, Product ID: {product_id}, loss {(actual_rating - prediction):.2f}, rating {actual_rating:.2f}, pred {prediction:.2f}, {latent_dot:.2f}, {user_b:.2f}, {item_b:.2f}, {global_mean:.2f}")
-            total_loss += (actual_rating - prediction) ** 2
-        return total_loss / len(training_data)
+
+            # Calculate regularization terms
+            user_regularization = np.sum(training_result.user_weights[user_id] ** 2)
+            item_regularization = np.sum(training_result.item_weights[product_id] ** 2)
+            user_metadata_regularization = np.sum(training_result.user_metadata_weights[user_id] ** 2)
+            item_metadata_regularization = np.sum(training_result.item_metadata_weights[product_id] ** 2)
+            user_bias_regularization = training_result.user_bias[user_id] ** 2
+            item_bias_regularization = training_result.item_bias[product_id] ** 2
+            
+            regularization_term = self.regularization * (
+                user_regularization + item_regularization + 
+                user_metadata_regularization + item_metadata_regularization +
+                user_bias_regularization + item_bias_regularization
+            )
+            
+            total_loss += (actual_rating - prediction) ** 2 + regularization_term
+        return (total_loss / len(training_data), actual_rating - prediction, regularization_term)
 
     def predict(self, training_result: TrainingResult, user_id: int, product_id: int) -> float:
         """Make a prediction for a given user and product."""
@@ -551,6 +569,7 @@ class Trainer:
             # Calculate ranking distance
             dist = np.sum([0 if a == b else 1 for a, b in zip(rank_list, actual_order)])
             test_results.append([tr, dist])
+            print("test results", dist)
             
         best_result = min(test_results, key=lambda x: x[1])
         return best_result[0]

@@ -1,4 +1,4 @@
-## ISSUE-001: Explosive Growth in Latent Factor [In Progress]
+## ISSUE-001: Explosive Growth in Latent Factor [Solved]
 **Module**: train/train.py:ALSModel
 
 **Priority**: High
@@ -7,6 +7,7 @@
 
 **Description**: The latent factor in the ALS model is growing exponentially, leading to singluar matrix and instability.
 
+**Solved**: 2025-07-26
 
 **Log Entries**:
 - [info] The metadata have a large, unnormalized number. We need to find the source.
@@ -30,10 +31,49 @@
 - [info] We can do normalization of latent factor. This ensures that latent factor dot product.
 - [info] We do this when updating the latent factor. So it still has the change and would calculate the loss **after** normalized.
 - [info] The latent is properly clamped but now the the bias getting wilder
+- [info] Apprently I calculate bias wrong,
+- [info] Fixing bias calculation.
+- [info] It does not have explosive growth anymore and no singular matrix error
+- [info] Solved
 
 **Action Items**:
 - [X] Add metadata in loss calculation
 - [X] Implement adaptive regularization
-- [ ] Add latent normalization
+- [X] Add latent normalization
+- [X] Fix bias update calculation
 
 ## ISSUE-002: Range and Column Constant [To Do]
+**Module**: intermediaries/constant.py
+
+**Priority**: Low
+
+**Created**: 2025-07-10
+
+**Description**: We still manually assign magic number to pick item, user and rating
+
+## ISSUE-003: Training Modularity [To Do]
+**Module**: train/train.py
+
+**Priority**: Medium
+
+**Created**: 2025-07-26
+
+**Description**: The fit function is too large. We need to breakit down to several functions
+
+## ISSUE-004: Prove of Converegence
+**Module**: Many
+
+**Priority**: High
+
+**Created**: 2025-07-25
+
+**Description**: While we stabilized the function for know, we dont know whether it is actually converge to a some good recommendation system
+
+## ISSUE-005: Deployment
+**Module**: serve/*.py
+
+**Priority**: High
+
+**Created**: 2025-07-26
+
+**Description**: The service file need to able read the desired model and serve it via FastAPI
