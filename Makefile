@@ -30,7 +30,7 @@ test:
 	python3 -m unittest discover tests -v
 
 run-train:
-	python3 -m train.main
+	python3 -m train.main > test2.log
 
 # Clean build artifacts
 clean:

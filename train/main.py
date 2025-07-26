@@ -67,7 +67,7 @@ class RecommendationSystemTrainer:
         
         # Set default hyperparameters if not provided
         if n_iter is None:
-            n_iter = [5] # Default to 5 iterations for simplicity
+            n_iter = [4] # Default to 5 iterations for simplicity
         if latent_factors is None:
             latent_factors = [3]
         if regularization is None:
@@ -160,24 +160,24 @@ def parse_arguments():
         '--n-iter',
         type=int,
         nargs='+',
-        default=[10, 20],
-        help='List of iteration counts to try (default: [10, 20])'
+        default=[10],
+        help='List of iteration counts to try (default: [5])'
     )
     
     parser.add_argument(
         '--latent-factors',
         type=int,
         nargs='+',
-        default=[5, 10],
-        help='List of latent factor counts to try (default: [5, 10])'
+        default=[3],
+        help='List of latent factor counts to try (default: [5])'
     )
     
     parser.add_argument(
         '--regularization',
         type=float,
         nargs='+',
-        default=[0.01, 0.1],
-        help='List of regularization values to try (default: [0.01, 0.1])'
+        default=[.1],
+        help='List of regularization values to try (default: [0.01])'
     )
     
     return parser.parse_args()
